@@ -1,0 +1,9 @@
+[template]
+src = "haproxy.tmpl"
+dest  = "/usr/local/etc/haproxy/haproxy.cfg"
+keys  = [
+    "ENDPOINTS",
+]
+
+check_cmd = "haproxy -c -f {{ .src }}"
+reload_cmd  = "haproxy -f /usr/local/etc/haproxy/haproxy.cfg -p /run/haproxy.pid -D -sf $(cat /run/haproxy.pid) -x /run/haproxy.sock"

@@ -1,0 +1,9 @@
+[template]
+src = "keepalived.tmpl"
+dest  = "/usr/local/etc/keepalived/keepalived.conf"
+keys  = [
+    "ENDPOINTS", "VIP", "INTERFACE", "PRIORITY", "VIRTUAL_ROUTER_ID", "AUTH_PASS"
+]
+
+reload_cmd  = "kill -HUP $(cat /run/keepalived.pid)"
+

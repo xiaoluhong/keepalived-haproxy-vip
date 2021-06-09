@@ -1,0 +1,43 @@
+! Configuration File for keepalived
+
+# vi /usr/local/etc/keepalived/keepalived.conf
+
+global_defs {
+    router_id LVS_DEVEL_1               # 路由ID，标识该节点的字符串，用于发送电子邮件通知
+    enable_script_security
+    script_user root
+}
+
+vrrp_script chk_haproxy {
+    script       "/usr/bin/chk_haproxy.sh"
+    timeout 2
+    interval 3
+    fall 2
+    rise 2
+}
+
+vrrp_instance VI_1 {
+
+    state BACKUP                        # “状态”只有“MASTER”和“BACKUP”，且必须为大写，“MASTER”为“working”，“BACKUP”为“standby”。
+    interface {{getenv "INTERFACE"}}    # 节点固有IP (非vip) 网卡，用于发送 VRRP 报文
+    virtual_router_id {{getenv "VIRTUAL_ROUTER_ID"}}                # 虚拟路由ID、相同vrrp_instance MASTER和BACKUP的vitrual_router_id需要保持一致
+    priority {{getenv "PRIORITY"}}                        # priority，同一vrrp_instance的MASTER优先级必须高于BACKUP
+    advert_int 1                        # MASTER 和 BACKUP 负载均衡器同步检查间隔 (秒)
+    garp_master_delay 2                 # 当切为 MASTER 状态后多久更新 ARP 缓存，默认5秒
+    nopreempt                           # 非抢占模式
+    authentication {                    #
+        auth_type PASS                  # 鉴权方式，支持 PASS 和 HA
+        auth_pass {{getenv "AUTH_PASS"}}       # MASTER 和 BACKUP 使用相同的密码进行通信
+    }
+    virtual_ipaddress {                 # 虚拟IP地址(VIP)，可以有多个地址，每行一个
+        {{getenv "VIP"}} dev {{getenv "INTERFACE"}}
+    }
+    track_interface {
+        {{getenv "INTERFACE"}}
+    }
+    track_script
+    {
+        chk_haproxy
+    }
+}
+

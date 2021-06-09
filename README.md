@@ -1,2 +1,2 @@
-# keepalived-haproxy-vip
-keepalived-haproxy-vip
+# cattle-cluster-agent-haproxy
+cattle-cluster-agent-haproxy

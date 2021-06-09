@@ -1,0 +1,59 @@
+global
+    maxconn 100000
+    log 127.0.0.1 local0 info
+    pidfile /run/haproxy.pid
+    stats socket /run/haproxy.sock mode 660 level admin expose-fd listeners
+    stats timeout 30s
+#    chroot /var/lib/haproxy
+
+    # Default SSL material locations
+    #ca-base /etc/ssl/certs
+    #crt-base /etc/ssl/private
+
+    #ssl-default-bind-ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384
+    #ssl-default-bind-ciphersuites TLS_AES_128_GCM_SHA256:TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256
+    #ssl-default-bind-options ssl-min-ver TLSv1.2 no-tls-tickets
+
+defaults
+    log global
+    mode tcp
+    option tcplog
+    option srvtcpka
+    option tcpka
+
+#    option abortonclose    # 当服务器负载很高的时候，自动结束掉当前队列处理比较久的连接
+    balance roundrobin     # 设置默认负载均衡方式，默认 roundrobin，可设置为 leastconn
+    option redispatch      # 当使用了cookie 时，haproxy 将会将其请求的后端服务器的 serverID 插入到 cookie 中，以保证会话的SESSION持久性；而此时，如果后端的服务器宕掉了，但是客户端的cookie是不会刷新的，如果设置此参数，将会将客户的请求强制定向到另外一个后端server上，以保证服务的正常。
+    option dontlognull     # 启用该项，日志中将不会记录空连接。
+    option httpclose
+
+    timeout connect 5s
+    timeout client 60s
+    timeout server 60s
+    timeout queue 10s
+
+    retries 3
+
+listen stats
+    log global
+    bind :10086
+    mode http
+    stats enable
+    stats hide-version
+    stats refresh 3s
+    stats realm Haproxy\ Statistics
+    stats uri /
+    stats auth rancher:Rancher@123456
+
+listen api-server
+    log global
+    mode tcp
+    bind *:9443
+    balance leastconn
+    option httpchk GET /healthz HTTP/1.0
+    http-check expect string ok
+    # check：启用健康检测，inter：健康检测间隔，rise：检测服务可用的连续次数，fall：检测服务不可用的连续次数
+    {{ $servers := split (getenv "ENDPOINTS") "," }}{{range $servers}}
+    server {{.}} {{.}}:6443 check inter 2000 rise 3 fall 3 check-ssl ca-file /etc/kubernetes/ssl/kube-ca.pem crt /home/ssl-crt.pem
+    {{end}}
+

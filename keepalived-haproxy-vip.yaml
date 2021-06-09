@@ -1,0 +1,169 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: keepalived-haproxy-vip
+---
+
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  labels:
+    app: keepalived-haproxy-vip
+  name: keepalived-haproxy-vip
+  namespace: keepalived-haproxy-vip
+---
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  annotations:
+  name: keepalived-haproxy-vip
+rules:
+- apiGroups: [""]
+  resources: ["*"]
+  verbs: ["get", "watch", "list"]
+
+---
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  annotations:
+  name: keepalived-haproxy-vip-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: keepalived-haproxy-vip
+subjects:
+- kind: ServiceAccount
+  name: keepalived-haproxy-vip
+  namespace: keepalived-haproxy-vip
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    field.cattle.io/creatorId: user-hd7zb
+  generation: 1
+  labels:
+    cattle.io/creator: norman
+  name: keepalived-haproxy-vip
+  namespace: keepalived-haproxy-vip
+spec:
+  progressDeadlineSeconds: 600
+  replicas: 2
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app: keepalived-haproxy-vip
+  strategy:
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
+    type: RollingUpdate
+  template:
+    metadata:
+      annotations:
+        field.cattle.io/ports: '[[]]'
+      labels:
+        app: keepalived-haproxy-vip
+    spec:
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - preference:
+              matchExpressions:
+              - key: node-role.kubernetes.io/controlplane
+                operator: In
+                values:
+                - "true"
+            weight: 100
+          - preference:
+              matchExpressions:
+              - key: node-role.kubernetes.io/control-plane
+                operator: In
+                values:
+                - "true"
+            weight: 99
+          - preference:
+              matchExpressions:
+              - key: node-role.kubernetes.io/master
+                operator: In
+                values:
+                - "true"
+            weight: 98
+          - preference:
+              matchExpressions:
+              - key: cattle.io/cluster-agent
+                operator: In
+                values:
+                - "true"
+            weight: 97
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: beta.kubernetes.io/os
+                operator: NotIn
+                values:
+                - windows
+              - key: app
+                operator: In
+                values:
+                - keepalived-haproxy-vip
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - keepalived-haproxy-vip
+              topologyKey: kubernetes.io/hostname
+            weight: 100
+      containers:
+      - env:
+        - name: AUTH_PASS
+          value: P@ssw0rd
+        - name: INTERFACE
+          value: enp0s2
+        - name: KEEPALIVED_ARG
+          value: -D -g -X
+        - name: PRIORITY
+          value: "100"
+        - name: VIP
+          value: 172.16.131.100/24
+        - name: VIRTUAL_ROUTER_ID
+          value: "51"
+        image: registry.cn-shenzhen.aliyuncs.com/rancher/cattle-cluster-agent-keepalived-haproxy-vip
+        imagePullPolicy: Always
+        name: keepalived-haproxy-vip
+        resources: {}
+        securityContext:
+          capabilities:
+            add:
+            - NET_ADMIN
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /etc/kubernetes/ssl/
+          name: k8s-ssl
+          readOnly: true
+      dnsPolicy: ClusterFirst
+      hostNetwork: true
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext: {}
+      serviceAccount: keepalived-haproxy-vip
+      serviceAccountName: keepalived-haproxy-vip
+      terminationGracePeriodSeconds: 30
+      tolerations:
+      - effect: NoSchedule
+        key: node-role.kubernetes.io/controlplane
+        value: "true"
+      volumes:
+      - hostPath:
+          path: /etc/kubernetes/ssl/
+          type: ""
+        name: k8s-ssl
