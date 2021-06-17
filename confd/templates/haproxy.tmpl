@@ -36,7 +36,7 @@ defaults
 
 listen stats
     log global
-    bind :10086
+    bind :{{getenv "HAPROXY_STATE_PORT"}}
     mode http
     stats enable
     stats hide-version
@@ -48,7 +48,7 @@ listen stats
 listen api-server
     log global
     mode tcp
-    bind *:9443
+    bind *:{{getenv "HAPROXY_K8S_API_PORT"}}
     balance leastconn
     option httpchk GET /healthz HTTP/1.0
     http-check expect string ok

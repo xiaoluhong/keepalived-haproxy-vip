@@ -2,7 +2,7 @@
 src = "haproxy.tmpl"
 dest  = "/usr/local/etc/haproxy/haproxy.cfg"
 keys  = [
-    "ENDPOINTS",
+    "ENDPOINTS", "HAPROXY_K8S_API_PORT", "HAPROXY_STATE_PORT"
 ]
 
 check_cmd = "haproxy -c -f {{ .src }}"

@@ -1,7 +1,48 @@
+KEEPALIVED_HAPROXY_IMAGES='registry.cn-shenzhen.aliyuncs.com/rancher/keepalived-haproxy-vip'
+KEEPALIVED_HAPROXY_VIP='172.16.131.100/24'
+KEEPALIVED_INTERFACE=eth0
+KEEPALIVED_ARG='-D -g -X'
+KEEPALIVED_PRIORITY=100
+KEEPALIVED_VIRTUAL_ROUTER_ID=$( echo ${RANDOM: 0:2} )
+KEEPALIVED_AUTH_PASS=$( openssl rand --hex 4 )
+
+HAPROXY_STATE_PORT=10086
+HAPROXY_K8S_API_PORT=9443
+HAPRXOY_NODEPORT=30186
+
+RISE_TIME='60' # 默认每 60 秒获取一次节点 IP 信息
+CONFD_AGE='-log-level=debug -onetime -backend env'
+
+cat <<EOF | kubectl apply -f -
 apiVersion: v1
 kind: Namespace
 metadata:
   name: keepalived-haproxy-vip
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    field.cattle.io/targetWorkloadIds: '["deployment:keepalived-haproxy-vip:keepalived-haproxy-vip"]'
+    workload.cattle.io/targetWorkloadIdNoop: "true"
+    workload.cattle.io/workloadPortBased: "true"
+  labels:
+    cattle.io/creator: norman
+  name: keepalived-haproxy-vip-nodeport
+  namespace: keepalived-haproxy-vip
+spec:
+  externalTrafficPolicy: Cluster
+  ports:
+  - name: 30086tcp01
+    nodePort: ${HAPRXOY_NODEPORT}
+    port: ${HAPROXY_STATE_PORT}
+    protocol: TCP
+    targetPort: ${HAPROXY_STATE_PORT}
+  selector:
+    app: keepalived-haproxy-vip
+  sessionAffinity: None
+  type: NodePort
 ---
 
 apiVersion: v1
@@ -22,7 +63,6 @@ rules:
 - apiGroups: [""]
   resources: ["*"]
   verbs: ["get", "watch", "list"]
-
 ---
 
 apiVersion: rbac.authorization.k8s.io/v1
@@ -41,27 +81,19 @@ subjects:
 ---
 
 apiVersion: apps/v1
-kind: Deployment
+kind: DaemonSet
 metadata:
   annotations:
-    field.cattle.io/creatorId: user-hd7zb
   generation: 1
   labels:
     cattle.io/creator: norman
   name: keepalived-haproxy-vip
   namespace: keepalived-haproxy-vip
 spec:
-  progressDeadlineSeconds: 600
-  replicas: 2
   revisionHistoryLimit: 10
   selector:
     matchLabels:
       app: keepalived-haproxy-vip
-  strategy:
-    rollingUpdate:
-      maxSurge: 0
-      maxUnavailable: 1
-    type: RollingUpdate
   template:
     metadata:
       annotations:
@@ -124,22 +156,51 @@ spec:
             weight: 100
       containers:
       - env:
-        - name: AUTH_PASS
-          value: P@ssw0rd
-        - name: INTERFACE
-          value: enp0s2
+        - name: HAPROXY_K8S_API_PORT
+          value: '${HAPROXY_K8S_API_PORT}'
+        - name: HAPROXY_STATE_PORT
+          value: '${HAPROXY_STATE_PORT}'
+        - name: RISE_TIME
+          value: '${RISE_TIME}'
+        - name: CONFD_AGE
+          value: ${CONFD_AGE}
+        - name: KEEPALIVED_AUTH_PASS
+          value: ${KEEPALIVED_AUTH_PASS}
+        - name: KEEPALIVED_INTERFACE
+          value: ${KEEPALIVED_INTERFACE}
         - name: KEEPALIVED_ARG
-          value: -D -g -X
-        - name: PRIORITY
-          value: "100"
-        - name: VIP
-          value: 172.16.131.100/24
-        - name: VIRTUAL_ROUTER_ID
-          value: "51"
-        image: registry.cn-shenzhen.aliyuncs.com/rancher/cattle-cluster-agent-keepalived-haproxy-vip
+          value: ${KEEPALIVED_ARG}
+        - name: KEEPALIVED_PRIORITY
+          value: '${KEEPALIVED_PRIORITY}'
+        - name: KEEPALIVED_HAPROXY_VIP
+          value: '${KEEPALIVED_HAPROXY_VIP}'
+        - name: KEEPALIVED_VIRTUAL_ROUTER_ID
+          value: '${KEEPALIVED_VIRTUAL_ROUTER_ID}'
+        image: ${KEEPALIVED_HAPROXY_IMAGES}
         imagePullPolicy: Always
         name: keepalived-haproxy-vip
-        resources: {}
+        readinessProbe:
+          exec:
+            command:
+            - /usr/bin/chk_haproxy.sh
+          failureThreshold: 3
+          initialDelaySeconds: 10
+          periodSeconds: 2
+          successThreshold: 2
+          timeoutSeconds: 2
+        livenessProbe:
+          exec:
+            command:
+            - /usr/bin/chk_haproxy.sh
+          failureThreshold: 3
+          initialDelaySeconds: 10
+          periodSeconds: 2
+          successThreshold: 1
+          timeoutSeconds: 2
+        resources:
+          limits:
+            cpu: "8"
+            memory: 8000Mi
         securityContext:
           capabilities:
             add:
@@ -150,7 +211,7 @@ spec:
         - mountPath: /etc/kubernetes/ssl/
           name: k8s-ssl
           readOnly: true
-      dnsPolicy: ClusterFirst
+      dnsPolicy: ClusterFirstWithHostNet
       hostNetwork: true
       restartPolicy: Always
       schedulerName: default-scheduler
@@ -167,3 +228,8 @@ spec:
           path: /etc/kubernetes/ssl/
           type: ""
         name: k8s-ssl
+  updateStrategy:
+    rollingUpdate:
+      maxUnavailable: 1
+    type: RollingUpdate
+EOF
